@@ -1,0 +1,303 @@
+#type="microsoft-entra-id"
+// VALIDAÇÃO INICIAL
+| Vendor.properties.userAgent != null
+
+// MATCH COM CSV - Com valores default  // essa parte do match com csv é opcional, vc pode usar outro fator para a regra.
+| match(file="UserAgent-Blacklist.csv", field=Vendor.properties.userAgent, include=[Category, Severity])
+| case {
+    Category = null | Category := "Unknown" ;
+    * | Category := Category ;
+}
+| case {
+    Severity = null | Severity := "Gray" ;
+    * | Severity := Severity ;
+}
+
+// CAMPOS BASE
+| mfaStatus := Vendor.properties.authenticationRequirement
+| resultType := Vendor.properties.resultType
+| errorCode := Vendor.properties.status.errorCode
+| resultSig := Vendor.resultSignature
+| authProtocol := Vendor.properties.authenticationProtocol
+| authStepDetail := Vendor.properties.authenticationDetails[0].authenticationStepResultDetail
+
+// TIMEZONE
+| DataHora := formatTime(format="%Y-%m-%d %H:%M:%S", field=@timestamp, timezone="America/Sao_Paulo")
+
+// STATUS DA SENHA
+| case {
+    // PRIORIDADE 1: authStepDetail específicos
+    authStepDetail = "Correct password" | StatusSenha := "🚨 SENHA COMPROMETIDA" ;
+    authStepDetail = "Incorrect password" | StatusSenha := "❌ SENHA INCORRETA" ;
+    authStepDetail = "Invalid username or password or Invalid on-premise username or password." | StatusSenha := "❌ CREDENCIAL INVÁLIDA" ;
+    authStepDetail = "MFA required in Azure AD" | StatusSenha := "✅ SENHA CORRETA (MFA salvou)" ;
+    authStepDetail = "MFA requirement satisfied by claim in the token" | StatusSenha := "✅ TOKEN MFA VÁLIDO" ;
+    authStepDetail = "User account is disabled. The account has been disabled by an administrator." | StatusSenha := "🚫 CONTA DESABILITADA" ;
+    
+    // PRIORIDADE 2: authStepDetail existe mas não mapeado
+    authStepDetail != null AND authStepDetail != "" | StatusSenha := "⚠️ AUTH: " + authStepDetail ;
+    
+    // PRIORIDADE 3: Fallback por errorCode
+    errorCode = 50126 | StatusSenha := "❌ SENHA INCORRETA (erro)" ;
+    errorCode = 50076 | StatusSenha := "⚠️ MFA REQUERIDO" ;
+    errorCode = 50053 | StatusSenha := "🔒 CONTA BLOQUEADA" ;
+    errorCode = 50057 | StatusSenha := "🚫 CONTA DESABILITADA" ;
+    
+    // PRIORIDADE 4: Fallback por resultado
+    resultType = 0 AND resultSig = "SUCCESS" | StatusSenha := "✅ ACESSO PERMITIDO" ;
+    resultSig = "FAILURE" | StatusSenha := "❌ FALHA: " + errorCode ;
+    resultSig = "SUCCESS" | StatusSenha := "✅ SUCESSO" ;
+    
+    // DEFAULT
+    * | StatusSenha := "⚠️ VERIFICAR" ;
+}
+
+// MFA STATUS
+| case {
+    mfaStatus = "multiFactorAuthentication" | StatusMFA := "✅ COM MFA" ;
+    mfaStatus = "singleFactorAuthentication" | StatusMFA := "❌ SEM MFA" ;
+    * | StatusMFA := "⚠️ NÃO IDENTIFICADO" ;
+}
+
+// ACESSO REAL
+| case {
+    resultType = 0 AND resultSig = "SUCCESS" | AcessoReal := "✅ ACESSO TOTAL CONFIRMADO" ;
+    resultType = 0 | AcessoReal := "✅ ACESSO PERMITIDO" ;
+    resultSig = "SUCCESS" | AcessoReal := "⚠️ SUCESSO PARCIAL" ;
+    resultSig = "FAILURE" | AcessoReal := "❌ BLOQUEADO" ;
+    * | AcessoReal := "❓ VERIFICAR" ;
+}
+
+// POLÍTICA - ABORDAGEM DIRETA (sem array:eval)
+| policyName := "Nenhuma"
+| policyResult := "none"
+
+// Verificar políticas em ordem de prioridade - FALHAS primeiro
+| case {
+    Vendor.properties.appliedConditionalAccessPolicies[0].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[0].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
+    
+    Vendor.properties.appliedConditionalAccessPolicies[1].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[1].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[1].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[1].result ;
+    
+    Vendor.properties.appliedConditionalAccessPolicies[2].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[2].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[2].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[2].result ;
+    
+    Vendor.properties.appliedConditionalAccessPolicies[3].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[3].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[3].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[3].result ;
+    
+    Vendor.properties.appliedConditionalAccessPolicies[4].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[4].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[4].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[4].result ;
+    
+    Vendor.properties.appliedConditionalAccessPolicies[5].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[5].result = "failure" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[5].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[5].result ;
+    
+    // Se não encontrou falhas, pegar políticas com sucesso
+    policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[0].result = "success" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
+    
+    policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[1].result = "success" |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[1].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[1].result ;
+    
+    // Se ainda não encontrou, pegar qualquer política disponível
+    policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[0].displayName != null |
+        policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
+        policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
+    
+    * | policyName := policyName ; policyResult := policyResult ;
+}
+
+// STATUS DA POLÍTICA
+| case {
+    policyResult = "reportOnlyFailure" | PolicyStatus := "🔴 DETECTADO MAS NÃO BLOQUEADO" ;
+    policyResult = "reportOnlyNotApplied" | PolicyStatus := "⚪ NÃO APLICADA (REPORT-ONLY)" ;
+    policyResult = "failure" | PolicyStatus := "🚫 BLOQUEADO POR POLÍTICA" ;
+    policyResult = "success" | PolicyStatus := "✅ POLÍTICA APLICADA" ;
+    policyResult = "notApplied" | PolicyStatus := "⚪ NÃO APLICADA" ;
+    policyResult = "notEnabled" | PolicyStatus := "⚫ DESABILITADA" ;
+    * | PolicyStatus := "❓ SEM POLÍTICA" ;
+}
+
+// DETECTAR CONTAS DE SERVIÇO usando regex()
+| isServiceAccount := false
+| case {
+    regex("(robo|rpa|servico|integracao|api|svc-|srv-)", field=user.email) | isServiceAccount := true ;
+    * | isServiceAccount := false ;
+}
+
+// CRITICIDADE - Lógica completa
+| case {
+    // 🚨🚨🚨 EMERGÊNCIA MÁXIMA
+    authStepDetail = "Correct password" AND mfaStatus = "singleFactorAuthentication" | 
+      Criticidade := "🚨🚨🚨 EMERGÊNCIA - SENHA COMPROMETIDA SEM MFA" ;
+    
+    authStepDetail = "Correct password" AND isServiceAccount = true | 
+      Criticidade := "🚨🚨🚨 EMERGÊNCIA - CONTA DE SERVIÇO COMPROMETIDA" ;
+    
+    authStepDetail = "Correct password" AND source.geo.country_name != "BR" | 
+      Criticidade := "🚨🚨🚨 EMERGÊNCIA - SENHA COMPROMETIDA INTERNACIONAL" ;
+    
+    authStepDetail = "Correct password" | 
+      Criticidade := "🚨🚨 CRÍTICO - SENHA COMPROMETIDA" ;
+    
+    // 🔴🔴🔴 CRÍTICO - MFA salvou mas senha está comprometida
+    authStepDetail = "MFA required in Azure AD" AND source.geo.country_name != "BR" | 
+      Criticidade := "🔴🔴🔴 CRÍTICO - Senha correta internacional (MFA salvou)" ;
+    
+    authStepDetail = "MFA required in Azure AD" AND Severity = "Red" | 
+      Criticidade := "🔴🔴🔴 CRÍTICO - Password spray acertou senha (MFA salvou)" ;
+    
+    authStepDetail = "MFA required in Azure AD" | 
+      Criticidade := "🔴🔴 ALTO - Senha correta mas MFA protegeu" ;
+    
+    // 🔴🔴🔴 CRÍTICO - Acessos bem-sucedidos suspeitos
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+      Criticidade := "🔴🔴🔴 CRÍTICO - Acesso internacional sem MFA, política apenas em report" ;
+    
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" | 
+      Criticidade := "🔴🔴🔴 CRÍTICO - Acesso internacional sem MFA" ;
+    
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND Severity = "Red" | 
+      Criticidade := "🔴🔴🔴 CRÍTICO - User agent malicioso + sem MFA + sucesso" ;
+    
+    // 🔴🔴 ALTO
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND source.geo.country_name != "BR" AND Severity = "Red" | 
+      Criticidade := "🔴🔴 ALTO - Internacional + MFA + user agent suspeito" ;
+    
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+      Criticidade := "🔴🔴 ALTO - Sem MFA + política não bloqueou" ;
+    
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" | 
+      Criticidade := "🔴🔴 ALTO - Qualquer sucesso sem MFA é risco" ;
+    
+    resultType = 0 AND source.geo.country_name != "BR" | 
+      Criticidade := "🔴🔴 ALTO - Acesso internacional (mesmo com MFA)" ;
+    
+    // 🔴 MÉDIO
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND Severity = "Red" | 
+      Criticidade := "🔴 MÉDIO - User agent suspeito mas com MFA" ;
+    
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+      Criticidade := "🔴 MÉDIO - Com MFA mas política detectou anomalia" ;
+    
+    resultType = 0 AND Severity = "Yellow" | 
+      Criticidade := "🔴 MÉDIO - Sucesso com severidade moderada" ;
+    
+    resultType = 0 | 
+      Criticidade := "🔴 MÉDIO - Sucesso (verificar contexto)" ;
+    
+    // 🟡 ATENÇÃO
+    errorCode = 50126 AND source.geo.country_name != "BR" | 
+      Criticidade := "🟡 ATENÇÃO - Tentativa de senha internacional" ;
+    
+    errorCode = 50126 AND Severity = "Red" | 
+      Criticidade := "🟡 ATENÇÃO - Password spray detectado" ;
+    
+    errorCode = 50076 | 
+      Criticidade := "🟡 ATENÇÃO - MFA challenge (possível comprometimento de senha)" ;
+    
+    errorCode = 50053 | 
+      Criticidade := "🟡 ATENÇÃO - Conta bloqueada (possível ataque)" ;
+    
+    PolicyStatus = "🚫 BLOQUEADO POR POLÍTICA" | 
+      Criticidade := "🟡 ATENÇÃO - Política bloqueou (verificar motivo)" ;
+    
+    // ⚪ BAIXO
+    errorCode = 50126 | 
+      Criticidade := "⚪ BAIXO - Senha incorreta" ;
+    
+    errorCode = 50057 | 
+      Criticidade := "⚪ BAIXO - Conta desabilitada" ;
+    
+    * | 
+      Criticidade := "⚪ BAIXO - Outros casos" ;
+}
+
+// DESCRIÇÃO DETALHADA
+| DetalhesAtaque := format(format="🚨 LOGIN SUSPEITO - USER AGENT MALICIOSO 🚨\n════════════════════════════════════════════════════════════════\n→ USUÁRIO: %s (ID: %s)\n→ USER AGENT MALICIOSO: %s\n   └─ CATEGORIA: %s | SEVERIDADE: %s\n→ ORIGEM DO ATAQUE:\n   └─ IP: %s (ASN: %s)\n   └─ LOCALIZAÇÃO: %s, %s\n   └─ COORDENADAS: [%s, %s]\n→ SEGURANÇA:\n   └─ AUTENTICAÇÃO: %s\n   └─ STATUS SENHA: %s\n   └─ DETALHE AUTH: %s\n   └─ ACESSO: %s\n   └─ NÍVEL DE RISCO: %s\n   └─ RESULTADO: %s (Código: %s)\n→ POLÍTICA DE BLOQUEIO:\n   └─ POLÍTICA: %s\n   └─ STATUS: %s\n→ RECURSOS ACESSADOS:\n   └─ RECURSO: %s\n   └─ APLICAÇÃO: %s (ID: %s)\n→ DETALHES DA SESSÃO:\n   └─ DATA/HORA: %s (UTC-3)\n   └─ SESSÃO ID: %s\n   └─ DURAÇÃO: %sms\n   └─ TENANT: %s\n   └─ É CONTA DE SERVIÇO: %s\n════════════════════════════════════════════════════════════════", 
+    field=[user.email, 
+           user.id,
+           Vendor.properties.userAgent,
+           Category,
+           Severity,
+           source.ip,
+           Vendor.properties.autonomousSystemNumber,
+           source.geo.city_name,
+           source.geo.country_name,
+           source.geo.location.lat,
+           source.geo.location.lon,
+           mfaStatus,
+           StatusSenha,
+           authStepDetail,
+           AcessoReal,
+           Vendor.properties.riskLevelAggregated,       
+           resultSig,
+           errorCode,
+           policyName,
+           PolicyStatus,
+           Vendor.properties.resourceDisplayName,
+           Vendor.properties.appDisplayName,
+           Vendor.properties.appId,
+           DataHora,
+           Vendor.properties.sessionId,
+           Vendor.properties.processingTimeInMilliseconds,
+           Vendor.tenantId,
+           isServiceAccount])
+
+// SELECT FINAL
+| select([
+    @timestamp,
+    Criticidade,
+    authStepDetail,
+    DetalhesAtaque,
+    user.email,
+    StatusSenha,
+    AcessoReal,
+    Vendor.properties.userAgent,
+    Category,
+    Severity,
+    source.ip,
+    Vendor.properties.autonomousSystemNumber,
+    source.geo.city_name,
+    source.geo.country_name,
+    StatusMFA,
+    PolicyStatus,
+    policyName,
+    isServiceAccount,
+    Vendor.properties.riskLevelAggregated,
+    Vendor.properties.resourceDisplayName,
+    Vendor.properties.appDisplayName,
+    resultSig,
+    errorCode,
+    Vendor.properties.sessionId,
+    Vendor.properties.conditionalAccessStatus
+])
+
+// RENOMEAR
+| rename(field=user.email, as=Usuario)
+| rename(field=Vendor.properties.userAgent, as=UserAgent)
+| rename(field=source.ip, as=IPOrigem)
+| rename(field=Vendor.properties.autonomousSystemNumber, as=ASN)
+| rename(field=source.geo.city_name, as=Cidade)
+| rename(field=source.geo.country_name, as=País)
+| rename(field=Vendor.properties.riskLevelAggregated, as=NívelRisco)
+| rename(field=Vendor.properties.resourceDisplayName, as=RecursoAcessado)
+| rename(field=Vendor.properties.appDisplayName, as=Aplicação)
+| rename(field=resultSig, as=ResultadoFinal)
+| rename(field=errorCode, as=CódigoErro)
+| rename(field=Vendor.properties.sessionId, as=IDSessão)
+| rename(field=Vendor.properties.conditionalAccessStatus, as=StatusCA)
+| rename(field=authStepDetail, as=DetalheAutenticação)
+| rename(field=policyName, as=PolíticaAplicada)
+| rename(field=isServiceAccount, as=ContaDeServiço)
+
+// ORDENAR
+| sort(@timestamp, reverse=true, limit=200000)
