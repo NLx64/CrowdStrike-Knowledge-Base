@@ -2,7 +2,7 @@
 // VALIDAÇÃO INICIAL
 | Vendor.properties.userAgent != null
 
-// MATCH COM CSV - Com valores default  // essa parte do match com csv é opcional, vc pode usar outro fator para a regra.
+// MATCH COM CSV - Com valores default  // essa parte do match com csv é opcional, vc pode usar outro fator para a regra, para usar a regra com o match, precisa importar o arquivo de lookup. na console UserAgent-Blacklist.csv
 | match(file="UserAgent-Blacklist.csv", field=Vendor.properties.userAgent, include=[Category, Severity])
 | case {
     Category = null | Category := "Unknown" ;
