@@ -1,0 +1,34 @@
+#event_simpleName=RegSystemConfigValueUpdate
+| RegObjectName=/\\CurrentVersion\\Explorer\\RunMRU/i
+| case {
+    // Condição 1: Apenas checkmark unicode
+    RegStringValue=/✅/ 
+        | threat:="Unicode_Checkmark";
+    
+    // Condição 2: Ferramentas específicas COM caracteres unicode suspeitos
+    RegStringValue=/(powershell|mshta|curl|msiexec|\^)/i 
+    AND RegStringValue=/[\u0400-\u04FF\u0370-\u03FF\u0590-\u05FF\u0600-\u06FF\u0E00-\u0E7F\u2C80-\u2CFF\u13A0-\u13FF\u0530-\u058F\u10A0-\u10FF\u0900-\u097F]/ 
+        | threat:="Tool_With_Suspicious_Unicode";
+    
+    // Condição 3: MSHTA específico (não MRUList e não terminando com \1)
+    RegStringValue=/mshta/i 
+    AND RegValueName!="MRUList" 
+    AND RegStringValue!=/mshta\.exe\\1$/i 
+    AND RegStringValue!=/mshta\\1$/i 
+        | threat:="MSHTA_Suspicious";
+    
+    // Condição 4: Ferramentas de download (não MRUList)
+    RegStringValue=/(bitsadmin|forfiles|ProxyCommand=)/i 
+    AND RegValueName!="MRUList" 
+        | threat:="Download_Tools";
+    
+    // Condição 5: CMD/PowerShell com comandos suspeitos OU encoded
+    RegStringValue=/^(cmd|powershell)/i 
+    AND (RegStringValue=/(-W Hidden\s|-\seC\s|curl|E:jscript|ssh|Invoke-Expression|UtcNow|Floor|DownloadString|DownloadFile|FromBase64String|System\.IO\.Compression|System\.IO\.MemoryStream|iex|Invoke-WebRequest|iwr|Get-ADDomainController|InstallProduct|-w h|-X POST|Invoke-RestMethod|-NoP -W|\.InVOKe|-useb|irm\s|\^|\[char\]|\[scriptblock\]|-UserAgent|UseBasicParsing|\.Content)/i
+         OR RegStringValue=/[-\/–][Ee\^]{1,2}[NnCcOoDdEeMmAa\^]*\s[A-Za-z0-9+\/=]{15,}/)
+        | threat:="PowerShell_Suspicious_Command";
+    
+    * | threat:="none";
+}
+| threat!="none"
+| table([@timestamp, aid, ComputerName, RegValueName, RegStringValue, threat])
