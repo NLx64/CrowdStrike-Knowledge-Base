@@ -1,6 +1,6 @@
 Bem-vindo! Este repositório contém as regras de detecção avançada em CrowdStrike Query Language (CQL) que foram criadas e demonstradas durante a apresentação ao vivo sobre NG-SIEM
 
-O objetivo aqui não é apenas compartilhar queries, mas demonstrar uma filosofia de detecção que equilibra performance, precisão e operacionalidade. Cada regra foi projetada para ser mais do que um simples script: é um framework de análise empacotado em código.
+O objetivo aqui não é apenas compartilhar queries, mas demonstrar uma filosofia de detecção que equilibra performance, precisão e operacionalidade. 
 
 Nossa Filosofia de Detecção:
 
@@ -13,7 +13,7 @@ O Funil de Dados: Toda query é estruturada como um funil, descartando o máximo
 Agregação e Enriquecimento Inteligentes: Usamos as ferramentas certas para cada tarefa: groupBy com consciência da cardinalidade, collect(limit=...) para evitar sobrecarga, e a função de enriquecimento correta (lookup local vs. ioc:lookup externo) apenas após filtrar o ruído. O foco é o balanço crítico entre contexto e custo.
 
 
-As Regras
+As Regras:
 
 Este repositório apresenta três arquétipos de detecção, cada um com uma estratégia distinta:
 
@@ -49,6 +49,7 @@ Logs de EDR do CrowdStrike Falcon, especificamente RegSystemConfigValueUpdate.
 Arquivos de Lookup:
 
 UserAgent-Blacklist.csv: Um arquivo CSV com colunas userAgent, Category e Severity para enriquecer eventos do Entra ID com reputação de User-Agent.
+
 
 Como Usar:
 
