@@ -1,17 +1,5 @@
 Bem-vindo! Este repositório contém as regras de detecção avançada em CrowdStrike Query Language (CQL) que foram criadas e demonstradas durante a apresentação ao vivo sobre NG-SIEM
 
-O objetivo aqui não é apenas compartilhar queries, mas demonstrar uma filosofia de detecção que equilibra performance, precisão e operacionalidade. 
-
-Nossa Filosofia de Detecção:
-
-As regras neste repositório foram construídas sobre três pilares fundamentais:
-
-Princípios da Detecção Eficiente: O objetivo de uma boa query não é apenas encontrar ameaças, mas fazê-lo de forma rápida, precisa (sem falsos positivos) e com resultados que permitam uma ação imediata. Cada linha de código deve servir a um propósito operacional.
-
-O Funil de Dados: Toda query é estruturada como um funil, descartando o máximo de dados irrelevantes no início (#event_simpleName) antes de aplicar lógicas complexas. Filtrar primeiro garante que as operações caras (agregações, joins) trabalhem sobre o menor conjunto de dados possível.
-
-Agregação e Enriquecimento Inteligentes: Usamos as ferramentas certas para cada tarefa: groupBy com consciência da cardinalidade, collect(limit=...) para evitar sobrecarga, e a função de enriquecimento correta (lookup local vs. ioc:lookup externo) apenas após filtrar o ruído. O foco é o balanço crítico entre contexto e custo.
-
 
 As Regras:
 
@@ -57,7 +45,7 @@ Faça o Upload dos Arquivos de Lookup: Adicione o arquivo UserAgent-Blacklist.cs
 
 Adapte os Nomes: Verifique se os nomes dos arquivos nas queries correspondem exatamente aos nomes dos arquivos que você subiu.
 
-Copie e Cole: Copie o código CQL da regra desejada para a interface de busca ou para a criação de um alerta agendado.
+Copie e Cole: Copie o código CQL da regra desejada para a interface de busca ou para a criação de uma correlation rule.
 
 Teste em Homologação: SEMPRE execute e valide as regras em um ambiente de não produção ou com um lookback de tempo limitado para entender o impacto e o volume de alertas.
 
