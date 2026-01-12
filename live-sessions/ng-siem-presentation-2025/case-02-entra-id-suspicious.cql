@@ -1,3 +1,15 @@
+// ============================================================================
+// DETECÇÃO: Comportamento Suspeito no Microsoft Entra ID
+// ============================================================================
+// Objetivo: Analisar cada evento de login do Microsoft Entra ID através de
+//           múltiplos vetores (MFA, geolocalização, reputação do User-Agent,
+//           Políticas de Acesso Condicional) para construir um perfil de risco.
+//
+// Fonte de Dados: Microsoft Entra ID (Azure AD)
+// Estratégia: Classificação Contextual Multi-vetor
+// Pré-requisito: Arquivo de lookup UserAgent-Blacklist.csv
+// ============================================================================
+
 #type="microsoft-entra-id"
 // VALIDAÇÃO INICIAL
 | Vendor.properties.userAgent != null
@@ -33,21 +45,21 @@
     authStepDetail = "MFA required in Azure AD" | StatusSenha := "✅ SENHA CORRETA (MFA salvou)" ;
     authStepDetail = "MFA requirement satisfied by claim in the token" | StatusSenha := "✅ TOKEN MFA VÁLIDO" ;
     authStepDetail = "User account is disabled. The account has been disabled by an administrator." | StatusSenha := "🚫 CONTA DESABILITADA" ;
-    
+
     // PRIORIDADE 2: authStepDetail existe mas não mapeado
     authStepDetail != null AND authStepDetail != "" | StatusSenha := "⚠️ AUTH: " + authStepDetail ;
-    
+
     // PRIORIDADE 3: Fallback por errorCode
     errorCode = 50126 | StatusSenha := "❌ SENHA INCORRETA (erro)" ;
     errorCode = 50076 | StatusSenha := "⚠️ MFA REQUERIDO" ;
     errorCode = 50053 | StatusSenha := "🔒 CONTA BLOQUEADA" ;
     errorCode = 50057 | StatusSenha := "🚫 CONTA DESABILITADA" ;
-    
+
     // PRIORIDADE 4: Fallback por resultado
     resultType = 0 AND resultSig = "SUCCESS" | StatusSenha := "✅ ACESSO PERMITIDO" ;
     resultSig = "FAILURE" | StatusSenha := "❌ FALHA: " + errorCode ;
     resultSig = "SUCCESS" | StatusSenha := "✅ SUCESSO" ;
-    
+
     // DEFAULT
     * | StatusSenha := "⚠️ VERIFICAR" ;
 }
@@ -77,41 +89,41 @@
     Vendor.properties.appliedConditionalAccessPolicies[0].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[0].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
-    
+
     Vendor.properties.appliedConditionalAccessPolicies[1].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[1].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[1].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[1].result ;
-    
+
     Vendor.properties.appliedConditionalAccessPolicies[2].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[2].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[2].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[2].result ;
-    
+
     Vendor.properties.appliedConditionalAccessPolicies[3].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[3].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[3].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[3].result ;
-    
+
     Vendor.properties.appliedConditionalAccessPolicies[4].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[4].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[4].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[4].result ;
-    
+
     Vendor.properties.appliedConditionalAccessPolicies[5].result = "reportOnlyFailure" OR Vendor.properties.appliedConditionalAccessPolicies[5].result = "failure" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[5].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[5].result ;
-    
+
     // Se não encontrou falhas, pegar políticas com sucesso
     policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[0].result = "success" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
-    
+
     policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[1].result = "success" |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[1].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[1].result ;
-    
+
     // Se ainda não encontrou, pegar qualquer política disponível
     policyName = "Nenhuma" AND Vendor.properties.appliedConditionalAccessPolicies[0].displayName != null |
         policyName := Vendor.properties.appliedConditionalAccessPolicies[0].displayName ;
         policyResult := Vendor.properties.appliedConditionalAccessPolicies[0].result ;
-    
+
     * | policyName := policyName ; policyResult := policyResult ;
 }
 
@@ -136,94 +148,94 @@
 // CRITICIDADE - Lógica completa
 | case {
     // 🚨🚨🚨 EMERGÊNCIA MÁXIMA
-    authStepDetail = "Correct password" AND mfaStatus = "singleFactorAuthentication" | 
+    authStepDetail = "Correct password" AND mfaStatus = "singleFactorAuthentication" |
       Criticidade := "🚨🚨🚨 EMERGÊNCIA - SENHA COMPROMETIDA SEM MFA" ;
-    
-    authStepDetail = "Correct password" AND isServiceAccount = true | 
+
+    authStepDetail = "Correct password" AND isServiceAccount = true |
       Criticidade := "🚨🚨🚨 EMERGÊNCIA - CONTA DE SERVIÇO COMPROMETIDA" ;
-    
-    authStepDetail = "Correct password" AND source.geo.country_name != "BR" | 
+
+    authStepDetail = "Correct password" AND source.geo.country_name != "BR" |
       Criticidade := "🚨🚨🚨 EMERGÊNCIA - SENHA COMPROMETIDA INTERNACIONAL" ;
-    
-    authStepDetail = "Correct password" | 
+
+    authStepDetail = "Correct password" |
       Criticidade := "🚨🚨 CRÍTICO - SENHA COMPROMETIDA" ;
-    
+
     // 🔴🔴🔴 CRÍTICO - MFA salvou mas senha está comprometida
-    authStepDetail = "MFA required in Azure AD" AND source.geo.country_name != "BR" | 
+    authStepDetail = "MFA required in Azure AD" AND source.geo.country_name != "BR" |
       Criticidade := "🔴🔴🔴 CRÍTICO - Senha correta internacional (MFA salvou)" ;
-    
-    authStepDetail = "MFA required in Azure AD" AND Severity = "Red" | 
+
+    authStepDetail = "MFA required in Azure AD" AND Severity = "Red" |
       Criticidade := "🔴🔴🔴 CRÍTICO - Password spray acertou senha (MFA salvou)" ;
-    
-    authStepDetail = "MFA required in Azure AD" | 
+
+    authStepDetail = "MFA required in Azure AD" |
       Criticidade := "🔴🔴 ALTO - Senha correta mas MFA protegeu" ;
-    
+
     // 🔴🔴🔴 CRÍTICO - Acessos bem-sucedidos suspeitos
-    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" |
       Criticidade := "🔴🔴🔴 CRÍTICO - Acesso internacional sem MFA, política apenas em report" ;
-    
-    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" | 
+
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND source.geo.country_name != "BR" |
       Criticidade := "🔴🔴🔴 CRÍTICO - Acesso internacional sem MFA" ;
-    
-    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND Severity = "Red" | 
+
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND Severity = "Red" |
       Criticidade := "🔴🔴🔴 CRÍTICO - User agent malicioso + sem MFA + sucesso" ;
-    
+
     // 🔴🔴 ALTO
-    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND source.geo.country_name != "BR" AND Severity = "Red" | 
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND source.geo.country_name != "BR" AND Severity = "Red" |
       Criticidade := "🔴🔴 ALTO - Internacional + MFA + user agent suspeito" ;
-    
-    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" |
       Criticidade := "🔴🔴 ALTO - Sem MFA + política não bloqueou" ;
-    
-    resultType = 0 AND mfaStatus = "singleFactorAuthentication" | 
+
+    resultType = 0 AND mfaStatus = "singleFactorAuthentication" |
       Criticidade := "🔴🔴 ALTO - Qualquer sucesso sem MFA é risco" ;
-    
-    resultType = 0 AND source.geo.country_name != "BR" | 
+
+    resultType = 0 AND source.geo.country_name != "BR" |
       Criticidade := "🔴🔴 ALTO - Acesso internacional (mesmo com MFA)" ;
-    
+
     // 🔴 MÉDIO
-    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND Severity = "Red" | 
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND Severity = "Red" |
       Criticidade := "🔴 MÉDIO - User agent suspeito mas com MFA" ;
-    
-    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" | 
+
+    resultType = 0 AND mfaStatus = "multiFactorAuthentication" AND PolicyStatus = "🔴 DETECTADO MAS NÃO BLOQUEADO" |
       Criticidade := "🔴 MÉDIO - Com MFA mas política detectou anomalia" ;
-    
-    resultType = 0 AND Severity = "Yellow" | 
+
+    resultType = 0 AND Severity = "Yellow" |
       Criticidade := "🔴 MÉDIO - Sucesso com severidade moderada" ;
-    
-    resultType = 0 | 
+
+    resultType = 0 |
       Criticidade := "🔴 MÉDIO - Sucesso (verificar contexto)" ;
-    
+
     // 🟡 ATENÇÃO
-    errorCode = 50126 AND source.geo.country_name != "BR" | 
+    errorCode = 50126 AND source.geo.country_name != "BR" |
       Criticidade := "🟡 ATENÇÃO - Tentativa de senha internacional" ;
-    
-    errorCode = 50126 AND Severity = "Red" | 
+
+    errorCode = 50126 AND Severity = "Red" |
       Criticidade := "🟡 ATENÇÃO - Password spray detectado" ;
-    
-    errorCode = 50076 | 
+
+    errorCode = 50076 |
       Criticidade := "🟡 ATENÇÃO - MFA challenge (possível comprometimento de senha)" ;
-    
-    errorCode = 50053 | 
+
+    errorCode = 50053 |
       Criticidade := "🟡 ATENÇÃO - Conta bloqueada (possível ataque)" ;
-    
-    PolicyStatus = "🚫 BLOQUEADO POR POLÍTICA" | 
+
+    PolicyStatus = "🚫 BLOQUEADO POR POLÍTICA" |
       Criticidade := "🟡 ATENÇÃO - Política bloqueou (verificar motivo)" ;
-    
+
     // ⚪ BAIXO
-    errorCode = 50126 | 
+    errorCode = 50126 |
       Criticidade := "⚪ BAIXO - Senha incorreta" ;
-    
-    errorCode = 50057 | 
+
+    errorCode = 50057 |
       Criticidade := "⚪ BAIXO - Conta desabilitada" ;
-    
-    * | 
+
+    * |
       Criticidade := "⚪ BAIXO - Outros casos" ;
 }
 
 // DESCRIÇÃO DETALHADA
-| DetalhesAtaque := format(format="🚨 LOGIN SUSPEITO - USER AGENT MALICIOSO 🚨\n════════════════════════════════════════════════════════════════\n→ USUÁRIO: %s (ID: %s)\n→ USER AGENT MALICIOSO: %s\n   └─ CATEGORIA: %s | SEVERIDADE: %s\n→ ORIGEM DO ATAQUE:\n   └─ IP: %s (ASN: %s)\n   └─ LOCALIZAÇÃO: %s, %s\n   └─ COORDENADAS: [%s, %s]\n→ SEGURANÇA:\n   └─ AUTENTICAÇÃO: %s\n   └─ STATUS SENHA: %s\n   └─ DETALHE AUTH: %s\n   └─ ACESSO: %s\n   └─ NÍVEL DE RISCO: %s\n   └─ RESULTADO: %s (Código: %s)\n→ POLÍTICA DE BLOQUEIO:\n   └─ POLÍTICA: %s\n   └─ STATUS: %s\n→ RECURSOS ACESSADOS:\n   └─ RECURSO: %s\n   └─ APLICAÇÃO: %s (ID: %s)\n→ DETALHES DA SESSÃO:\n   └─ DATA/HORA: %s (UTC-3)\n   └─ SESSÃO ID: %s\n   └─ DURAÇÃO: %sms\n   └─ TENANT: %s\n   └─ É CONTA DE SERVIÇO: %s\n════════════════════════════════════════════════════════════════", 
-    field=[user.email, 
+| DetalhesAtaque := format(format="🚨 LOGIN SUSPEITO - USER AGENT MALICIOSO 🚨\n════════════════════════════════════════════════════════════════\n→ USUÁRIO: %s (ID: %s)\n→ USER AGENT MALICIOSO: %s\n   └─ CATEGORIA: %s | SEVERIDADE: %s\n→ ORIGEM DO ATAQUE:\n   └─ IP: %s (ASN: %s)\n   └─ LOCALIZAÇÃO: %s, %s\n   └─ COORDENADAS: [%s, %s]\n→ SEGURANÇA:\n   └─ AUTENTICAÇÃO: %s\n   └─ STATUS SENHA: %s\n   └─ DETALHE AUTH: %s\n   └─ ACESSO: %s\n   └─ NÍVEL DE RISCO: %s\n   └─ RESULTADO: %s (Código: %s)\n→ POLÍTICA DE BLOQUEIO:\n   └─ POLÍTICA: %s\n   └─ STATUS: %s\n→ RECURSOS ACESSADOS:\n   └─ RECURSO: %s\n   └─ APLICAÇÃO: %s (ID: %s)\n→ DETALHES DA SESSÃO:\n   └─ DATA/HORA: %s (UTC-3)\n   └─ SESSÃO ID: %s\n   └─ DURAÇÃO: %sms\n   └─ TENANT: %s\n   └─ É CONTA DE SERVIÇO: %s\n════════════════════════════════════════════════════════════════",
+    field=[user.email,
            user.id,
            Vendor.properties.userAgent,
            Category,
@@ -238,7 +250,7 @@
            StatusSenha,
            authStepDetail,
            AcessoReal,
-           Vendor.properties.riskLevelAggregated,       
+           Vendor.properties.riskLevelAggregated,
            resultSig,
            errorCode,
            policyName,
