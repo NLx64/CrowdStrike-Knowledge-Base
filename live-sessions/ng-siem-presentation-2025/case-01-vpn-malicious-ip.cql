@@ -1,3 +1,13 @@
+// ============================================================================
+// DETECÇÃO: Acesso VPN de IP com Reputação Maliciosa
+// ============================================================================
+// Objetivo: Detectar tentativas de login na VPN (Checkpoint) originadas de IPs
+//           com reputação maliciosa conhecida, gerando alertas de alta fidelidade.
+//
+// Fonte de Dados: Logs de VPN Checkpoint Connectra
+// Estratégia: Correlação com IOCs de Threat Intelligence
+// ============================================================================
+
 // Filtrar eventos de VPN Checkpoint
 #Vendor="checkpoint" #event.dataset="ngfw.connectra"
 | user.name = *
@@ -58,6 +68,6 @@
 }
 
 // Formatar alerta detalhado
-| format(format="ALERTA %s: IP malicioso %s detectado. Confiança: %s, Actor: %s, Malware: %s, Tipo: %s, Campaign: %s. Labels completos: [%s]. Ação: %s. Período: %s a %s. Total de %s tentativas de login VPN (%s sucessos, %s falhas) com %s usuários únicos, usuários: %s", 
-  field=[riskLevel, source.ip, ioc_confidence, actor, malware, threat_type, campaign, ioc_labels, event.action, FirstSeen, LastSeen, totalAttempts, successfulAttempts, failedAttempts, uniqueUsers, user.name], 
-  as="detailed_description")  // MUDANÇA: Padronizado para detailed_description
+| format(format="ALERTA %s: IP malicioso %s detectado. Confiança: %s, Actor: %s, Malware: %s, Tipo: %s, Campaign: %s. Labels completos: [%s]. Ação: %s. Período: %s a %s. Total de %s tentativas de login VPN (%s sucessos, %s falhas) com %s usuários únicos, usuários: %s",
+  field=[riskLevel, source.ip, ioc_confidence, actor, malware, threat_type, campaign, ioc_labels, event.action, FirstSeen, LastSeen, totalAttempts, successfulAttempts, failedAttempts, uniqueUsers, user.name],
+  as="detailed_description")
